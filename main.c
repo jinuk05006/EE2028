@@ -24,8 +24,10 @@ static void check_ths(float hum_data
 		,float temp_data
 		,float bruh //accel_data[2]
 		,float pressure_data);
+static void monitor(void);
 
 void SystemClock_Config(void);
+
 //global variables
 #define exploring 0
 #define warning 1
@@ -96,6 +98,7 @@ int main(void)
 	BSP_HSENSOR_Init();
 	BSP_GYRO_Init();
 	BSP_MAGNETO_Init();
+	monitor();
 
 	//infinite loop using conditionals to funnel the guy through different modes
 	while(1){
@@ -178,12 +181,14 @@ static void BATTLE_MODE(void)
 			HAL_GPIO_TogglePin(GPIOB, GPIO_PIN_14);
 			}
 
-		if(sec_counter%500 == 0){
+		if(sec_counter%500 == 0 && sec_counter != 0){
 			if(battery-2 >= 0){
 				battery = battery - 2;
+				monitor();
 				sprintf(big_message_print,"bang bang bang!\r\nCurrent Battery level: %d/10\r\n",battery);
 				HAL_UART_Transmit(&huart1, (uint8_t*)big_message_print, strlen(big_message_print),0xFFFF);
 			}else{
+				monitor();
 				sprintf(message_print,"Out of battery!\r\n");
 				HAL_UART_Transmit(&huart1, (uint8_t*)message_print, strlen(message_print),0xFFFF);
 			}
@@ -241,9 +246,11 @@ static void single_press(void){
         if(mode == battle){
           if(battery<10){
           battery++;
+          monitor();
           sprintf(big_message_print,"CHARGING!\r\nCurrent Battery Level: %d/10\r\n",battery);
           HAL_UART_Transmit(&huart1, (uint8_t*)big_message_print, strlen(big_message_print),0xFFFF);
           }else{
+        	 monitor();
             sprintf(message_print,"Battery is full!\r\n");
             HAL_UART_Transmit(&huart1, (uint8_t*)message_print, strlen(message_print),0xFFFF);
           }
@@ -308,6 +315,7 @@ static void GatheredData(void){
 
 static void check_ths(float hum_data,float rms_mag_data,float rms_gyro_data,float temp_data,float bruh,float pressure_data){
 	int flag = 0;
+	int sens_flag = 0;
 
 	if(hum_data<= 10.0f){
 		flag++;
@@ -315,79 +323,42 @@ static void check_ths(float hum_data,float rms_mag_data,float rms_gyro_data,floa
 	if(rms_mag_data>=35.0f){
 		flag++;
 	}
-	if(rms_gyro_data>300.0f){
+	if(rms_gyro_data>400.0f){
 		flag++;
 	}
 	if(temp_data>=35.0f || temp_data<= 10.0f){
-		flag++;
+		sens_flag++;
 	}
 	if(bruh<= 0.0f || bruh>= 20.0){//accelerometer
-		flag++;
+		sens_flag++;
 	}
 	if(pressure_data>=110.0f || pressure_data<=70.0f){
 		flag++;
 	}
-	if(flag>=2){
-		mode = warning;
-		flag_dp = 1;
-	}
-}
-
-static void MX_GPIO_Init(void)
-
-{
-	__HAL_RCC_GPIOB_CLK_ENABLE(); //Enable AHB2 Bus for GPIOB
-	__HAL_RCC_GPIOC_CLK_ENABLE(); //ENable AHB2 Bus for GPIOC
-
-	HAL_GPIO_WritePin(GPIOB, LED2_Pin, GPIO_PIN_RESET); // Reset the LED2_Pin as 0
-
-	GPIO_InitTypeDef GPIO_InitStruct = {0};
-
-	// Configuration of LED2_Pin (GPIO-B Pin-14) as GPIO output
-	GPIO_InitStruct.Pin = LED2_Pin;
-	GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
-	GPIO_InitStruct.Pull = GPIO_NOPULL;
-	GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-	HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
-
-
-
-	// Configuration of BUTTON_EXTI13_Pin (G{IO-C Pin-13)as AF
-	GPIO_InitStruct.Pin = BUTTON_EXTI13_Pin;
-	GPIO_InitStruct.Mode = GPIO_MODE_IT_FALLING;
-	GPIO_InitStruct.Pull = GPIO_NOPULL;
-	HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
-
-
-	// Configuration of HTS221_DRDY_EXTI15 Pin
-	GPIO_InitStruct.Pin = GPIO_PIN_15;
-	GPIO_InitStruct.Mode = GPIO_MODE_IT_FALLING;
-	GPIO_InitStruct.Pull = GPIO_NOPULL;
-	HAL_GPIO_Init(GPIOD, &GPIO_InitStruct);
-
-
-	// Configuration of LSM6DSL_INT1_EXTI11 Pin
-	GPIO_InitStruct.Pin = GPIO_PIN_11;
-	GPIO_InitStruct.Mode = GPIO_MODE_IT_FALLING;
-	GPIO_InitStruct.Pull = GPIO_NOPULL;
-	HAL_GPIO_Init(GPIOD, &GPIO_InitStruct);
-
-
-	// Configuration of LSM6DSL_DRDY_EXTI11 pin
-	GPIO_InitStruct.Pin = GPIO_PIN_8;
-	GPIO_InitStruct.Mode = GPIO_MODE_IT_FALLING;
-	GPIO_InitStruct.Pull = GPIO_NOPULL;
-	HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
-
-	// Enable NVIC EXTI line 15 - 10
-	HAL_NVIC_EnableIRQ(EXTI15_10_IRQn);
-	HAL_NVIC_SetPriority(EXTI15_10_IRQn, 0, 0);
-
-	// Enable NVIC EXTI line 9 - 5
-	HAL_NVIC_EnableIRQ(EXTI9_5_IRQn);
-	HAL_NVIC_SetPriority(EXTI9_5_IRQn,0,1);
-
-
+	 if(previous_mode==battle){
+	    if((flag+sens_flag)>=1){
+	      mode= warning;
+	      flag_dp =1;
+	      sprintf(message_print,"%d anomalous data detected.\r\n",(flag+sens_flag));
+	      HAL_UART_Transmit(&huart1, (uint8_t*)message_print, strlen(message_print),0xFFFF);
+	    }else{
+	      mode=battle;
+	      sprintf(message_print,"%d anomalous data detected.\r\n",(flag+sens_flag));
+	      HAL_UART_Transmit(&huart1, (uint8_t*)message_print, strlen(message_print),0xFFFF);
+	    }
+	  }
+	  else if(previous_mode==exploring){
+	    if(flag>=2){
+	      mode=warning;
+	      flag_dp =1;
+	      sprintf(message_print,"%d anomalous data detected.\r\n",flag);
+	        HAL_UART_Transmit(&huart1, (uint8_t*)message_print, strlen(message_print),0xFFFF);
+	       }else{
+	      mode=exploring;
+	      sprintf(message_print,"%d anomalous data detected.\r\n",flag);
+	        HAL_UART_Transmit(&huart1, (uint8_t*)message_print, strlen(message_print),0xFFFF);
+	       	 	 }
+	  }
 }
 
 static void UART1_Init(void)
@@ -418,5 +389,211 @@ static void UART1_Init(void)
     {
       while(1);
     }
+
+}
+
+static void monitor(void){
+  if(battery==0){
+    HAL_GPIO_WritePin(GPIOA, GPIO_PIN_3 , 1); //D4=dot
+    HAL_GPIO_WritePin(GPIOB, GPIO_PIN_4 , 1); //D5=C
+    HAL_GPIO_WritePin(GPIOB, GPIO_PIN_1 , 1); //D6=D
+    HAL_GPIO_WritePin(GPIOA, GPIO_PIN_4 , 1); //D7=E
+    HAL_GPIO_WritePin(GPIOB, GPIO_PIN_2 , 1); //D8=B
+    HAL_GPIO_WritePin(GPIOA, GPIO_PIN_15 , 1); //D9=A
+    HAL_GPIO_WritePin(GPIOA, GPIO_PIN_2 , 1); //D10=F
+    HAL_GPIO_WritePin(GPIOA, GPIO_PIN_7 , 0); //D11=G
+  }
+  if(battery==1){
+    HAL_GPIO_WritePin(GPIOA, GPIO_PIN_3 , 1); //D4=dot
+    HAL_GPIO_WritePin(GPIOB, GPIO_PIN_4 , 1); //D5=C
+    HAL_GPIO_WritePin(GPIOB, GPIO_PIN_1 , 0); //D6=D
+    HAL_GPIO_WritePin(GPIOA, GPIO_PIN_4 , 0); //D7=E
+    HAL_GPIO_WritePin(GPIOB, GPIO_PIN_2 , 1); //D8=B
+    HAL_GPIO_WritePin(GPIOA, GPIO_PIN_15 , 0); //D9=A
+    HAL_GPIO_WritePin(GPIOA, GPIO_PIN_2 , 0); //D10=F
+    HAL_GPIO_WritePin(GPIOA, GPIO_PIN_7 , 0); //D11=G
+  }
+  if(battery==2){
+    HAL_GPIO_WritePin(GPIOA, GPIO_PIN_3 , 1); //D4=dot
+    HAL_GPIO_WritePin(GPIOB, GPIO_PIN_4 , 0); //D5=C
+    HAL_GPIO_WritePin(GPIOB, GPIO_PIN_1 , 1); //D6=D
+    HAL_GPIO_WritePin(GPIOA, GPIO_PIN_4 , 1); //D7=E
+    HAL_GPIO_WritePin(GPIOB, GPIO_PIN_2 , 1); //D8=B
+    HAL_GPIO_WritePin(GPIOA, GPIO_PIN_15 , 1); //D9=A
+    HAL_GPIO_WritePin(GPIOA, GPIO_PIN_2 , 0); //D10=F
+    HAL_GPIO_WritePin(GPIOA, GPIO_PIN_7 , 1); //D11=G
+  }
+  if(battery==3){
+    HAL_GPIO_WritePin(GPIOA, GPIO_PIN_3 , 1); //D4=dot
+    HAL_GPIO_WritePin(GPIOB, GPIO_PIN_4 , 1); //D5=C
+    HAL_GPIO_WritePin(GPIOB, GPIO_PIN_1 , 1); //D6=D
+    HAL_GPIO_WritePin(GPIOA, GPIO_PIN_4 , 0); //D7=E
+    HAL_GPIO_WritePin(GPIOB, GPIO_PIN_2 , 1); //D8=B
+    HAL_GPIO_WritePin(GPIOA, GPIO_PIN_15 , 1); //D9=A
+    HAL_GPIO_WritePin(GPIOA, GPIO_PIN_2 , 0); //D10=F
+    HAL_GPIO_WritePin(GPIOA, GPIO_PIN_7 , 1); //D11=G
+  }
+  if(battery==4){
+    HAL_GPIO_WritePin(GPIOA, GPIO_PIN_3 , 1); //D4=dot
+    HAL_GPIO_WritePin(GPIOB, GPIO_PIN_4 , 1); //D5=C
+    HAL_GPIO_WritePin(GPIOB, GPIO_PIN_1 , 0); //D6=D
+    HAL_GPIO_WritePin(GPIOA, GPIO_PIN_4 , 0); //D7=E
+    HAL_GPIO_WritePin(GPIOB, GPIO_PIN_2 , 1); //D8=B
+    HAL_GPIO_WritePin(GPIOA, GPIO_PIN_15 , 0); //D9=A
+    HAL_GPIO_WritePin(GPIOA, GPIO_PIN_2 , 1); //D10=F
+    HAL_GPIO_WritePin(GPIOA, GPIO_PIN_7 , 1); //D11=G
+  }
+  if(battery==5){
+    HAL_GPIO_WritePin(GPIOA, GPIO_PIN_3 , 1); //D4=dot
+    HAL_GPIO_WritePin(GPIOB, GPIO_PIN_4 , 1); //D5=C
+    HAL_GPIO_WritePin(GPIOB, GPIO_PIN_1 , 1); //D6=D
+    HAL_GPIO_WritePin(GPIOA, GPIO_PIN_4 , 0); //D7=E
+    HAL_GPIO_WritePin(GPIOB, GPIO_PIN_2 , 0); //D8=B
+    HAL_GPIO_WritePin(GPIOA, GPIO_PIN_15 , 1); //D9=A
+    HAL_GPIO_WritePin(GPIOA, GPIO_PIN_2 , 1); //D10=F
+    HAL_GPIO_WritePin(GPIOA, GPIO_PIN_7 , 1); //D11=G
+  }
+  if(battery==6){
+    HAL_GPIO_WritePin(GPIOA, GPIO_PIN_3 , 1); //D4=dot
+    HAL_GPIO_WritePin(GPIOB, GPIO_PIN_4 , 1); //D5=C
+    HAL_GPIO_WritePin(GPIOB, GPIO_PIN_1 , 1); //D6=D
+    HAL_GPIO_WritePin(GPIOA, GPIO_PIN_4 , 1); //D7=E
+    HAL_GPIO_WritePin(GPIOB, GPIO_PIN_2 , 0); //D8=B
+    HAL_GPIO_WritePin(GPIOA, GPIO_PIN_15 , 1); //D9=A
+    HAL_GPIO_WritePin(GPIOA, GPIO_PIN_2 , 1); //D10=F
+    HAL_GPIO_WritePin(GPIOA, GPIO_PIN_7 , 1); //D11=G
+  }
+  if(battery==7){
+    HAL_GPIO_WritePin(GPIOA, GPIO_PIN_3 , 1); //D4=dot
+    HAL_GPIO_WritePin(GPIOB, GPIO_PIN_4 , 1); //D5=C
+    HAL_GPIO_WritePin(GPIOB, GPIO_PIN_1 , 0); //D6=D
+    HAL_GPIO_WritePin(GPIOA, GPIO_PIN_4 , 0); //D7=E
+    HAL_GPIO_WritePin(GPIOB, GPIO_PIN_2 , 1); //D8=B
+    HAL_GPIO_WritePin(GPIOA, GPIO_PIN_15 , 1); //D9=A
+    HAL_GPIO_WritePin(GPIOA, GPIO_PIN_2 , 0); //D10=F
+    HAL_GPIO_WritePin(GPIOA, GPIO_PIN_7 , 0); //D11=G
+  }
+  if(battery==8){
+    HAL_GPIO_WritePin(GPIOA, GPIO_PIN_3 , 1); //D4=dot
+    HAL_GPIO_WritePin(GPIOB, GPIO_PIN_4 , 1); //D5=C
+    HAL_GPIO_WritePin(GPIOB, GPIO_PIN_1 , 1); //D6=D
+    HAL_GPIO_WritePin(GPIOA, GPIO_PIN_4 , 1); //D7=E
+    HAL_GPIO_WritePin(GPIOB, GPIO_PIN_2 , 1); //D8=B
+    HAL_GPIO_WritePin(GPIOA, GPIO_PIN_15 , 1); //D9=A
+    HAL_GPIO_WritePin(GPIOA, GPIO_PIN_2 , 1); //D10=F
+    HAL_GPIO_WritePin(GPIOA, GPIO_PIN_7 , 1); //D11=G
+  }
+
+
+if(battery==9){
+    HAL_GPIO_WritePin(GPIOA, GPIO_PIN_3 , 1); //D4=dot
+    HAL_GPIO_WritePin(GPIOB, GPIO_PIN_4 , 1); //D5=C
+    HAL_GPIO_WritePin(GPIOB, GPIO_PIN_1 , 1); //D6=D
+    HAL_GPIO_WritePin(GPIOA, GPIO_PIN_4 , 0); //D7=E
+    HAL_GPIO_WritePin(GPIOB, GPIO_PIN_2 , 1); //D8=B
+    HAL_GPIO_WritePin(GPIOA, GPIO_PIN_15 , 1); //D9=A
+    HAL_GPIO_WritePin(GPIOA, GPIO_PIN_2 , 1); //D10=F
+    HAL_GPIO_WritePin(GPIOA, GPIO_PIN_7 , 1); //D11=G
+  }
+  if(battery==10){
+    HAL_GPIO_WritePin(GPIOA, GPIO_PIN_3 , 1); //D4=dot
+    HAL_GPIO_WritePin(GPIOB, GPIO_PIN_4 , 0); //D5=C
+    HAL_GPIO_WritePin(GPIOB, GPIO_PIN_1 , 0); //D6=D
+    HAL_GPIO_WritePin(GPIOA, GPIO_PIN_4 , 1); //D7=E
+    HAL_GPIO_WritePin(GPIOB, GPIO_PIN_2 , 0); //D8=B
+    HAL_GPIO_WritePin(GPIOA, GPIO_PIN_15 , 1); //D9=A
+    HAL_GPIO_WritePin(GPIOA, GPIO_PIN_2 , 1); //D10=F
+    HAL_GPIO_WritePin(GPIOA, GPIO_PIN_7 , 1); //D11=G
+  }
+
+}
+
+static void MX_GPIO_Init(void)
+
+{
+  __HAL_RCC_GPIOA_CLK_ENABLE();
+  __HAL_RCC_GPIOB_CLK_ENABLE(); //Enable AHB2 Bus for GPIOB
+  __HAL_RCC_GPIOC_CLK_ENABLE(); //ENable AHB2 Bus for GPIOC
+
+  HAL_GPIO_WritePin(GPIOB, LED2_Pin, GPIO_PIN_RESET); // Reset the LED2_Pin as 0
+  HAL_GPIO_WritePin(GPIOA, GPIO_PIN_3 , GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOA, GPIO_PIN_4 , GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOB, GPIO_PIN_4 , GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOB, GPIO_PIN_1 , GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOA, GPIO_PIN_7 , GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOB, GPIO_PIN_2 , GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOA, GPIO_PIN_15 , GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOA, GPIO_PIN_2 , GPIO_PIN_RESET);
+  GPIO_InitTypeDef GPIO_InitStruct = {0};
+
+  // Configuration of LED2_Pin (GPIO-B Pin-14) as GPIO output
+  GPIO_InitStruct.Pin = LED2_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
+
+  //Configuration of Monitor
+  GPIO_InitStruct.Pin = GPIO_PIN_3;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+
+  GPIO_InitStruct.Pin = GPIO_PIN_4;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+
+  GPIO_InitStruct.Pin = GPIO_PIN_4;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
+
+  GPIO_InitStruct.Pin = GPIO_PIN_1;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
+
+  GPIO_InitStruct.Pin = GPIO_PIN_7;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+
+  GPIO_InitStruct.Pin = GPIO_PIN_2;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
+
+
+  GPIO_InitStruct.Pin = GPIO_PIN_15;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+
+  GPIO_InitStruct.Pin = GPIO_PIN_2;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+
+  // Configuration of BUTTON_EXTI13_Pin (G{IO-C Pin-13)as AF
+  GPIO_InitStruct.Pin = BUTTON_EXTI13_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_IT_FALLING;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
+
+  // Enable NVIC EXTI line 13
+  HAL_NVIC_EnableIRQ(EXTI15_10_IRQn);
+  HAL_NVIC_EnableIRQ(SysTick_IRQn);
+  HAL_NVIC_SetPriority(SysTick_IRQn, 1, 1);
+  HAL_NVIC_SetPriority(EXTI15_10_IRQn, 0, 0);
+
 
 }
