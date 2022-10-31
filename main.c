@@ -22,7 +22,7 @@ static void check_ths(float hum_data
 		,float rms_mag_data
 		,float rms_gyro_data
 		,float temp_data
-		,float bruh
+		,float bruh //accel_data[2]
 		,float pressure_data);
 
 void SystemClock_Config(void);
@@ -216,7 +216,7 @@ static void WARNING_MODE(void)
 		single_press();
 		uint32_t t1=uwTick;
 		if(sec_counter%100==0){
-			sprintf(message_print,"SOS!\r\n");
+			sprintf(message_print,"WARNING mode: SOS!\r\n");
 			HAL_UART_Transmit(&huart1, (uint8_t*)message_print, strlen(message_print),0xFFFF);
 		}
 		if(sec_counter%16==0){
@@ -268,7 +268,7 @@ static void GatheredData(void){
 
 	float gyro_data[3];
 	float rms_gyro_data;
-	float gyro_data_i16[3] = { 0 };
+	int16_t gyro_data_i16[3] = { 0 };
 
 	BSP_GYRO_GetXYZ(gyro_data_i16);
 	gyro_data[0] = (float)gyro_data_i16[0]/100.0f;
