@@ -268,7 +268,7 @@ static void GatheredData(void){
 
 	float gyro_data[3];
 	float rms_gyro_data;
-	int16_t gyro_data_i16[3] = { 0 };
+	float gyro_data_i16[3] = { 0 };
 
 	BSP_GYRO_GetXYZ(gyro_data_i16);
 	gyro_data[0] = (float)gyro_data_i16[0]/100.0f;
