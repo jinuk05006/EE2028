@@ -115,7 +115,7 @@ int main(void)
 			BATTLE_MODE();
 		}
 
-		if (mode == warning && flag_dp == 1){
+		if (mode == warning ){
 			WARNING_MODE();
 		}
 	}
