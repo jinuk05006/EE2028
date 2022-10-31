@@ -172,9 +172,12 @@ static void BATTLE_MODE(void)
 		single_press(); //check for single press
 
 		if(sec_counter%100 == 0 && sec_counter != 0){
-			HAL_GPIO_TogglePin(GPIOB, GPIO_PIN_14);
 			GatheredData();
-		}
+			}
+		if(sec_counter%50 == 0){
+			HAL_GPIO_TogglePin(GPIOB, GPIO_PIN_14);
+			}
+
 		if(sec_counter%500 == 0){
 			if(battery-2 >= 0){
 				battery = battery - 2;
@@ -216,7 +219,7 @@ static void WARNING_MODE(void)
 			sprintf(message_print,"SOS!\r\n");
 			HAL_UART_Transmit(&huart1, (uint8_t*)message_print, strlen(message_print),0xFFFF);
 		}
-		if(sec_counter%33==0){
+		if(sec_counter%16==0){
 		  HAL_GPIO_TogglePin(GPIOB, GPIO_PIN_14);
 		}
 		while(1){
