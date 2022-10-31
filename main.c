@@ -28,7 +28,7 @@ static void monitor(void);
 
 void SystemClock_Config(void);
 
-//global variables
+//global variables and constants
 #define exploring 0
 #define warning 1
 #define battle 2
@@ -47,7 +47,7 @@ uint32_t t1,t2,texp,tbat;
 
 UART_HandleTypeDef huart1;
 
-//Our beloved callback function
+//Our beloved GPIO EXTI callback function
 HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 {
   if(GPIO_Pin == BUTTON_EXTI13_Pin)
@@ -86,6 +86,7 @@ HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 int main(void)
 {
 //initialise everything here
+	
 	initialise_monitor_handles(); // for semi-hosting support (printf)
 	/* Reset of all peripherals, Initializes the Flash interface and the Systick. */
 	HAL_Init();
@@ -137,7 +138,7 @@ static void EXPLORER_MODE(void)
 	while(1){
 		texp = uwTick;
 		if(exp_counter%10==0){
-			//this line gives the flag_dp ==1 and mode == warning
+		//this line gives the flag_dp ==1 and mode == warning
 			GatheredData();
 		}
 		if(flag_dp == 1 && mode == warning){
@@ -174,14 +175,14 @@ static void BATTLE_MODE(void)
 	while(flag_dp == 0){
 		single_press(); //check for single press
 
-		if(sec_counter%100 == 0 && sec_counter != 0){
-			GatheredData();
+		if(sec_counter%100 == 0 && sec_counter != 0){ //every 1 second
+			GatheredData(); //threshhold check inside if threshhold exceeded then flag_dp = 1 and break
 			}
-		if(sec_counter%50 == 0){
+		if(sec_counter%50 == 0){ //every half a second
 			HAL_GPIO_TogglePin(GPIOB, GPIO_PIN_14);
 			}
 
-		if(sec_counter%500 == 0 && sec_counter != 0){
+		if(sec_counter%500 == 0 && sec_counter != 0){ //every five second
 			if(battery-2 >= 0){
 				battery = battery - 2;
 				monitor();
@@ -193,17 +194,17 @@ static void BATTLE_MODE(void)
 				HAL_UART_Transmit(&huart1, (uint8_t*)message_print, strlen(message_print),0xFFFF);
 			}
 		}
-		if(flag_dp == 1 && mode == warning){
+		if(flag_dp == 1 && mode == warning){ //from gathereddata few lines back
 			mode = warning;
 			break;
 		}
-		if(flag_dp ==1 && mode == battle){
+		if(flag_dp ==1 && mode == battle){ //from double press
 			mode = exploring;
 			break;
 		}
 		sec_counter++;
 		tbat= uwTick;
-		while(1){
+		while(1){ //our 0.01s delay
 			if(uwTick-tbat==10){
 				break;
 			}
@@ -211,14 +212,16 @@ static void BATTLE_MODE(void)
 	}
 }
 static void WARNING_MODE(void)
-{
+{	//initialize stuff
 	mode = previous_mode;
 	flag_sp = 0;
 	flag_dp = 0;
 	sec_counter = 0;
+	
+	//while single press is 0
 	while(flag_sp == 0){
 		mode = warning;
-		single_press();
+		single_press(); //check for single press. if single press = 1, break
 		uint32_t t1=uwTick;
 		if(sec_counter%100==0){
 			sprintf(message_print,"WARNING mode: SOS!\r\n");
@@ -234,24 +237,25 @@ static void WARNING_MODE(void)
 		  	  	  }
 				}
 		}
-	mode = previous_mode;
-	flag_sp = 0;
+	mode = previous_mode; //return to previous mode
+	flag_sp = 0; //set single press back to 0 so the funnel in main can funnel the robot into previous mode
 }
 
+//check for single press
 static void single_press(void){
-	while(flag_pb == 1){
-		if(uwTick -t1>1000){
+	while(flag_pb == 1){ //while button is press else skip the whole thing
+		if(uwTick -t1>1000){ //if nothing happen after the first press
         flag_pb = 0;
-        flag_sp = 1;
-        if(mode == battle){
-          if(battery<10){
-          battery++;
-          monitor();
-          sprintf(big_message_print,"CHARGING!\r\nCurrent Battery Level: %d/10\r\n",battery);
+        flag_sp = 1; // single press =1
+        if(mode == battle){ //if battle mode and
+          if(battery<10){ //battery less than 10 then
+          battery++; //charge battery.
+          monitor(); //led monitor change accordingly
+          sprintf(big_message_print,"CHARGING!\r\nCurrent Battery Level: %d/10\r\n",battery); //battery level
           HAL_UART_Transmit(&huart1, (uint8_t*)big_message_print, strlen(big_message_print),0xFFFF);
-          }else{
-        	 monitor();
-            sprintf(message_print,"Battery is full!\r\n");
+          }else{ //if battery is 10 
+        	 monitor(); // monitor shows f
+            sprintf(message_print,"Battery is full!\r\n"); 
             HAL_UART_Transmit(&huart1, (uint8_t*)message_print, strlen(message_print),0xFFFF);
           }
         }
@@ -259,10 +263,10 @@ static void single_press(void){
   }
 }
 
-
+//this is where we gather data and check for threshhold limit of the data
 static void GatheredData(void){
-	float hum_data;
-	hum_data = BSP_HSENSOR_ReadHumidity();
+	float hum_data; 
+	hum_data = BSP_HSENSOR_ReadHumidity(); //humidity
 
 	float mag_data[3];
 	float rms_mag_data;
@@ -271,20 +275,20 @@ static void GatheredData(void){
 	mag_data[0] = (float)mag_data_i16[0]/100.0f;
 	mag_data[1] = (float)mag_data_i16[1]/100.0f;
 	mag_data[2] = (float)mag_data_i16[2]/100.0f;
-	rms_mag_data = (sqrt((mag_data[0]*mag_data[0])+(mag_data[1]*mag_data[1])+(mag_data[2]*mag_data[2])));
+	rms_mag_data = (sqrt((mag_data[0]*mag_data[0])+(mag_data[1]*mag_data[1])+(mag_data[2]*mag_data[2]))); //rms value of magnetometer
 
 	float gyro_data[3];
 	float rms_gyro_data;
-	int16_t gyro_data_i16[3] = { 0 };
+	int16_t gyro_data_i16[3] = { 0 }; 
 
 	BSP_GYRO_GetXYZ(gyro_data_i16);
 	gyro_data[0] = (float)gyro_data_i16[0]/100.0f;
 	gyro_data[1] = (float)gyro_data_i16[1]/100.0f;
 	gyro_data[2] = (float)gyro_data_i16[2]/100.0f;
-	rms_gyro_data = (sqrt((gyro_data[0]*gyro_data[0])+(gyro_data[1]*gyro_data[1])+(gyro_data[2]*gyro_data[2])));
+	rms_gyro_data = (sqrt((gyro_data[0]*gyro_data[0])+(gyro_data[1]*gyro_data[1])+(gyro_data[2]*gyro_data[2]))); //rms value of gyroscope
 
 	float temp_data;
-	temp_data = BSP_TSENSOR_ReadTemp();
+	temp_data = BSP_TSENSOR_ReadTemp(); //temperature
 
 	float accel_data[3];
 	int16_t accel_data_i16[3] = { 0 };      // array to store the x, y and z readings.
@@ -293,12 +297,12 @@ static void GatheredData(void){
 	accel_data[0] = (float)accel_data_i16[0] / 100.0f;
 	accel_data[1] = (float)accel_data_i16[1] / 100.0f;
 	accel_data[2] = (float)accel_data_i16[2] / 100.0f;
-	float bruh = accel_data[2];
+	float bruh = accel_data[2]; //bruh is z axis accel data
 
 	float pressure_data;
-	pressure_data = BSP_PSENSOR_ReadPressure()/10.0f;
+	pressure_data = BSP_PSENSOR_ReadPressure()/10.0f; //pressure data
 
-	check_ths(hum_data,rms_mag_data, rms_gyro_data, temp_data,bruh,pressure_data);
+	check_ths(hum_data,rms_mag_data, rms_gyro_data, temp_data,bruh,pressure_data); //check threshhold. 2 flags for exploring and 1 flag for battle will trigger warning mode
 
 	//for battle mode
 	if(mode == battle){
@@ -312,55 +316,55 @@ static void GatheredData(void){
 	}
 
 }
-
+//checking threshhold
 static void check_ths(float hum_data,float rms_mag_data,float rms_gyro_data,float temp_data,float bruh,float pressure_data){
-	int flag = 0;
-	int sens_flag = 0;
+	int flag = 0; //this one for exploring mode
+	int sens_flag = 0; //this one for battle mode
 
-	if(hum_data<= 10.0f){
+	if(hum_data<= 10.0f){ //10 percent is like super dry. maybe the robot stuck in fridge or it has suddenly appeared in desert.
 		flag++;
 	}
-	if(rms_mag_data>=35.0f){
+	if(rms_mag_data>=35.0f){ 
 		flag++;
 	}
-	if(rms_gyro_data>400.0f){
+	if(rms_gyro_data>400.0f){ //check if it's toppling 
 		flag++;
 	}
-	if(temp_data>=35.0f || temp_data<= 10.0f){
+	if(temp_data>=35.0f || temp_data<= 10.0f){//35 is quite hot in my opinion and 10 degrees might be too cold for the robot since he is naked
 		sens_flag++;
 	}
-	if(bruh<= 0.0f || bruh>= 20.0){//accelerometer
+	if(bruh<= 0.0f || bruh>= 20.0){//accelerometer. 0 means he has toppled to his side and 20 means something is really wrong.
 		sens_flag++;
 	}
-	if(pressure_data>=110.0f || pressure_data<=70.0f){
+	if(pressure_data>=110.0f || pressure_data<=70.0f){//either he has gone underwater or gone super high up in the air.
 		flag++;
 	}
-	 if(previous_mode==battle){
+	 if(previous_mode==battle){ //case for battle mode
 	    if((flag+sens_flag)>=1){
-	      mode= warning;
-	      flag_dp =1;
+	      mode= warning; //change mode to warning
+	      flag_dp =1; //double press flag to funnel the program from main to warning
 	      sprintf(message_print,"%d anomalous data detected.\r\n",(flag+sens_flag));
 	      HAL_UART_Transmit(&huart1, (uint8_t*)message_print, strlen(message_print),0xFFFF);
 	    }else{
-	      mode=battle;
+	      mode=battle; //else stay warning
 	      sprintf(message_print,"%d anomalous data detected.\r\n",(flag+sens_flag));
 	      HAL_UART_Transmit(&huart1, (uint8_t*)message_print, strlen(message_print),0xFFFF);
 	    }
 	  }
-	  else if(previous_mode==exploring){
+	  else if(previous_mode==exploring){ //case for exploration mode
 	    if(flag>=2){
-	      mode=warning;
-	      flag_dp =1;
+	      mode=warning; //change mode to warning 
+	      flag_dp =1; //double press flag to funnel the program from main to warning
 	      sprintf(message_print,"%d anomalous data detected.\r\n",flag);
 	        HAL_UART_Transmit(&huart1, (uint8_t*)message_print, strlen(message_print),0xFFFF);
 	       }else{
-	      mode=exploring;
+	      mode=exploring; //else stay exploring
 	      sprintf(message_print,"%d anomalous data detected.\r\n",flag);
 	        HAL_UART_Transmit(&huart1, (uint8_t*)message_print, strlen(message_print),0xFFFF);
 	       	 	 }
 	  }
 }
-
+//extra stuff for configuration
 static void UART1_Init(void)
 {
     /* Pin configuration for UART. BSP_COM_Init() can do this automatically */
